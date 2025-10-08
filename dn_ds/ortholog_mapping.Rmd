@@ -1,0 +1,26 @@
+# Load the biomaRt package
+if (!requireNamespace("biomaRt", quietly = TRUE)) {
+  install.packages("BiocManager")
+  BiocManager::install("biomaRt")
+}
+library(biomaRt)
+
+# Connect to Ensembl BioMart
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+chimp = useMart("ensembl", dataset = "ptroglodytes_gene_ensembl")
+
+# Get orthologs: Human genes with Chimpanzee orthologs
+orthologs = getLDS(
+  attributes = c("ensembl_gene_id", "external_gene_name"),
+  filters = "with_ptroglodytes_homolog",
+  values = TRUE,
+  mart = human,
+  attributesL = c("ensembl_gene_id", "external_gene_name"),
+  martL = chimp
+)
+
+# View the first few rows
+head(orthologs)
+
+# Save to CSV
+write.csv(orthologs, "human_chimp_orthologs.csv", row.names = FALSE)
