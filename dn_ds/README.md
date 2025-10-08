@@ -13,9 +13,11 @@ gunzip Homo_sapiens.GRCh38.dna.toplevel.fa.gz > homo_sapiens.dna.fa
 wget https://ftp.ensembl.org/pub/current_gtf/homo_sapiens/Homo_sapiens.GRCh38.115.gtf.gz
 gunzip Homo_sapiens.GRCh38.115.gtf.gz > homo_sapiens.dna.gtf
 # Download Neandertal VCF from max planck
-base_url="http://ftp.eva.mpg.de/neandertal/Chagyrskaya/VCF"
+base_url="http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Vindija33.19"
+
 for chr in {1..22} X; do
-    wget "${base_url}/chr${chr}.noRB.vcf.gz.tbi"
+    wget "${base_url}/chr${chr}_mq25_mapab100.vcf.gz"
+    wget "${base_url}/chr${chr}_mq25_mapab100.vcf.gz.tbi"
 done
 # Download Chimp reference CDS FASTA (or cDNA) and ortholog mapping
 wget https://ftp.ensembl.org/pub/current_fasta/pan_troglodytes/cdna/Pan_troglodytes.Pan_tro_3.0.cdna.all.fa.gz
