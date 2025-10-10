@@ -1,0 +1,528 @@
+---
+title: "LangGWAS"
+author: "Soheil Behravesh"
+date: "2025-06-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+# These packages help us clean up our data
+library(dplyr)
+library(tidyr)
+library(data.table)
+
+# These packages help us visualize our data 
+library(ggplot2)
+library(qqman)
+```
+
+```{r}
+# List all 8 Association TSV file into one
+files <- c("gwas-association-downloaded_2025-06-04-EFO_0003926.tsv", 
+           "gwas-association-downloaded_2025-06-04-HP_0025268.tsv",
+           "gwas-association-downloaded_2025-06-04-pubmedId_21051773.tsv",
+           "gwas-association-downloaded_2025-06-04-pubmedId_23423138.tsv", 
+           "gwas-association-downloaded_2025-06-04-pubmedId_30741946.tsv",
+           "gwas-association-downloaded_2025-06-04-pubmedId_36266505.tsv", 
+           "gwas-association-downloaded_2025-06-04-pubmedId_34861174.tsv", 
+           "gwas-association-downloaded_2025-06-04-HP_0100033.tsv")
+
+# Read and combine them
+df_Association <- do.call(rbind, lapply(files, function(f) read.delim(f, sep = "\t", header = TRUE, stringsAsFactors = FALSE)))
+colnames(df_Association)
+nrow(df_Association)
+ncol(df_Association)
+head(df_Association, 2)
+```
+
+
+```{r}
+df1 <- read.table("292.1_PheCode.v1.0.fastGWA.tsv", sep = '\t', header = T)
+colnames(df1)
+nrow(df1)
+ncol(df1)
+head(df1, 2)
+```
+
+```{r}
+df2 <- read.table("GCST90080862_buildGRCh38.tsv", sep = '\t', header = T)
+colnames(df2)
+nrow(df2)
+ncol(df2)
+head(df2, 2)
+```
+
+```{r}
+df3 <- read.table("GCST90297560.tsv", sep = '\t', header = T)
+colnames(df3)
+nrow(df3)
+ncol(df3)
+head(df3, 2)
+```
+
+```{r}
+df4 <- read.table("GCST90558311.tsv", sep = '\t', header = T, fill = TRUE)
+colnames(df4)
+nrow(df4)
+ncol(df4)
+head(df4, 2)
+```
+
+```{r}
+df5 <- read.table("GCST90558312.tsv", sep = '\t', header = T, fill = TRUE)
+colnames(df5)
+nrow(df5)
+ncol(df5)
+head(df5, 2)
+```
+
+```{r}
+df6 <- read.table("GCST90558313.tsv", sep = '\t', header = T, fill = TRUE)
+colnames(df6)
+nrow(df6)
+ncol(df6)
+head(df6, 2)
+```
+
+```{r}
+df7 <- read.table("GCST90558314.tsv", sep = '\t', header = T, fill = TRUE)
+colnames(df7)
+nrow(df7)
+ncol(df7)
+head(df7, 2)
+```
+
+```{r}
+df8 <- read.table("reformatted_GCST90435846.tsv", sep = '\t', header = T)
+colnames(df8)
+nrow(df8)
+ncol(df8)
+head(df8, 2)
+```
+
+```{r}
+df9 <- read.table("STUT_metaAnalysis_finalsummarystats.txt", sep = '\t', header = T)
+colnames(df9)
+nrow(df9)
+ncol(df9)
+head(df9, 2)
+```
+
+```{r}
+# Function to standardize GWAS datasets
+standardize_df <- function(df, chr_col, pos_col, pval_col, effect_af_col, snp_col=NULL) {
+  df %>%
+    mutate(
+      CHR = as.numeric(gsub("chr", "", .[[chr_col]])),
+      BP = as.numeric(.[[pos_col]]),
+      P = as.numeric(.[[pval_col]]),
+      effect_AF = as.numeric(.[[effect_af_col]])
+    ) %>%
+    filter(effect_AF > 0.05, !is.na(CHR), CHR %in% 1:22) %>%  # <-- Updated here
+    mutate(SNP = ifelse(is.null(snp_col), paste(CHR, BP, sep=":"), .[[snp_col]])) %>%
+    select(CHR, BP, P, SNP, effect_AF)
+}
+
+# Standardizing each dataset (same as previously defined)
+df1_std <- standardize_df(df1, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "variant_id")
+df2_std <- standardize_df(df2, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "Name")
+df3_std <- standardize_df(df3, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "variant_id")
+df4_std <- standardize_df(df4, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "rsid")
+df5_std <- standardize_df(df5, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "rsid")
+df6_std <- standardize_df(df6, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "rsid")
+df7_std <- standardize_df(df7, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "rsid")
+df8_std <- standardize_df(df8, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "variant_id")
+
+# df9 lacks chromosome and position, so it's excluded or needs external mapping
+
+# Special handling for df_Association (updated similarly)
+df_Association_std <- df_Association %>%
+  mutate(
+    CHR = as.numeric(CHR_ID),
+    BP = as.numeric(CHR_POS),
+    P = as.numeric(P.VALUE),
+    effect_AF = as.numeric(RISK.ALLELE.FREQUENCY)
+  ) %>%
+  filter(effect_AF > 0.05, !is.na(CHR), CHR %in% 1:22) %>%  # <-- Updated here as well
+  mutate(SNP = ifelse(!is.na(SNPS) & SNPS != "", SNPS, paste(CHR, BP, sep=":"))) %>%
+  select(CHR, BP, P, SNP, effect_AF)
+
+# Combine datasets
+df_combined <- bind_rows(
+  df1_std, df2_std, df3_std, df4_std, df5_std, df6_std, df7_std, df8_std, df_Association_std
+)
+
+# Quality check
+df_combined <- df_combined %>%
+  filter(!is.na(CHR) & !is.na(BP) & !is.na(P)) %>%
+  mutate(CHR = as.numeric(CHR), BP = as.numeric(BP), P = as.numeric(P))
+
+# Check for NA values in key columns
+summary(df_combined$CHR)
+summary(df_combined$BP)
+summary(df_combined$P)
+
+# Check total rows in combined dataset
+cat("Total variants after combining:", nrow(df_combined), "\n")
+
+# Quickly preview combined data
+head(df_combined)
+```
+
+```{r}
+# Prepare data for Manhattan plot
+manhattan_data <- df_combined %>% select(CHR, BP, P, SNP)
+
+# Create Manhattan plot
+png("Manhattan_Plot.png", width = 1200, height = 800, res = 150)
+manhattan(
+  manhattan_data,
+  col = c("grey20", "yellow3"),
+  genomewideline = -log10(5e-8),
+  suggestiveline = -log10(1e-5), 
+  main = "GWAS Manhattan Plot (Chr 1-22 only)")
+dev.off()
+```
+
+```{r}
+# Manhattan plot with custom colors and sizes
+png("Manhattan_custom.png", width=1200, height=800, res=150)
+
+manhattan(df_combined, 
+          main = "GWAS Combined Manhattan Plot",
+          cex = 0.8, 
+          col = c("cadetblue2", "darkslategray4"),
+          genomewideline = -log10(5e-8),
+          suggestiveline = -log10(1e-5))
+
+dev.off()
+```
+
+
+```{r}
+# Counting significant SNPs
+genome_wide_sig <- length(which(df_combined$P <= 5e-8))  # genome-wide threshold
+suggestive_sig <- length(which(df_combined$P <= 1e-5))   # suggestive threshold
+
+cat("Number of genome-wide significant SNPs (P <= 5e-8):", genome_wide_sig, "\n")
+cat("Number of suggestively significant SNPs (P <= 1e-5):", suggestive_sig, "\n")
+
+# Filter and export significant SNPs (genome-wide significance)
+sig <- df_combined %>% filter(P <= 5e-8)
+write.table(sig, "significant_SNPs_GWAS.txt", sep='\t', row.names=FALSE, quote=FALSE)
+```
+
+
+```{r}
+standardize_df <- function(df, chr_col, pos_col, pval_col, effect_af_col, beta_col, snp_col=NULL) {
+  df %>%
+    mutate(
+      CHR = as.numeric(gsub("chr", "", .[[chr_col]])),
+      BP = as.numeric(.[[pos_col]]),
+      P = as.numeric(.[[pval_col]]),
+      effect_AF = as.numeric(.[[effect_af_col]]),
+      beta = as.numeric(.[[beta_col]])
+    ) %>%
+    filter(effect_AF > 0.05, !is.na(CHR), CHR %in% 1:22) %>%
+    mutate(SNP = ifelse(is.null(snp_col), paste(CHR, BP, sep=":"), .[[snp_col]])) %>%
+    select(CHR, BP, P, SNP, effect_AF, beta)
+}
+
+
+df1_std <- standardize_df(df1, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "variant_id")
+df2_std <- standardize_df(df2, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "odds_ratio", "Name") # odds_ratio as proxy if no beta provided
+df3_std <- standardize_df(df3, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "variant_id")
+df4_std <- standardize_df(df4, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "rsid")
+df5_std <- standardize_df(df5, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "rsid")
+df6_std <- standardize_df(df6, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "rsid")
+df7_std <- standardize_df(df7, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "rsid")
+df8_std <- standardize_df(df8, "chromosome", "base_pair_location", "p_value", "effect_allele_frequency", "beta", "variant_id")
+
+df_combined <- bind_rows(
+  df1_std, df2_std, df3_std, df4_std, df5_std, df6_std, df7_std, df8_std
+)
+
+summary(df_combined$beta)
+
+
+
+```
+
+```{r}
+# This plot should be fixed i think
+
+
+
+
+
+
+# Plotting effect size (beta) against p-value
+# Ensure your df_combined has beta values
+if ("beta" %in% colnames(df_combined)) {
+  sample_plot <- df_combined %>% sample_frac(0.05)  # Optional subsample for plotting speed
+
+  ggplot(sample_plot, aes(x = abs(beta), y = P)) +
+    geom_point(color = "#0c4c8a", alpha = 0.6) +
+    theme_minimal() +
+    labs(title = "Effect Size vs. P-value", x = "Effect size (|Beta|)", y = "P-value") + 
+    theme(plot.title = element_text(hjust = 0.5, size = 15, face = "bold"))
+
+  # Save plot
+  ggsave("EffectSize_vs_Pvalue.png", width=8, height=6, dpi=300)
+} else {
+  cat("Beta column is not present in df_combined. Plotting skipped.\n")
+}
+```
+
+
+```{r}
+########### Evolutionary analysis
+```
+
+
+```{r}
+library(ivs)
+library(ggplot2)
+
+# Reading in data 
+sig <- read.table("significant_SNPs_GWAS.txt", sep = '\t', header = T)
+ihs <- read.table("EUR.IHSregions.50kbp.txt", sep = '\t', header = T) # candidate selection regions iHS - past 25,000 years
+
+
+# Extract significant SNPs (genome-wide significant, p <= 5e-8)
+#sig <- df_combined %>% 
+ # filter(P <= 5e-8) %>% 
+  #select(CHR, BP, P, SNP)
+
+# Check the number of significant SNPs
+cat("Number of significant SNPs (P <= 5e-8):", nrow(sig), "\n")
+
+# Generate genomic windows (±25kb around each SNP)
+sig <- sig %>%
+  mutate(
+    win_start = BP - 25000,
+    win_end = BP + 25000
+  )
+
+# Generate overlapping regions per chromosome
+regions_list <- list()
+
+for (i in 1:22) {
+  
+  chr_data <- sig %>% filter(CHR == i)
+  
+  if(nrow(chr_data) == 0){
+    next
+  }
+  
+  chr_data <- chr_data %>%
+    mutate(Range = iv(win_start, win_end), .keep = "unused")
+  
+  chr_regions <- iv_groups(chr_data$Range, abutting = TRUE)
+  
+  # Correct conversion to a dataframe:
+  regions_df <- data.frame(
+    start = iv_start(chr_regions),
+    end = iv_end(chr_regions)
+  )
+  
+  regions_df$chr <- i
+  
+  regions_list[[length(regions_list) + 1]] <- regions_df
+}
+
+# Combine all chromosome regions into one data frame
+regions <- bind_rows(regions_list)
+```
+
+
+```{r}
+# Export the regions for future reference
+write.table(regions, "sample_regions.txt", sep='\t', row.names=FALSE, quote=FALSE)
+
+# Preparing data frames for permutations
+regions <- regions %>%
+  mutate(
+    chr = as.numeric(chr),
+    start = as.numeric(start),
+    end = as.numeric(end)
+  )
+
+ihs <- ihs %>%
+  mutate(
+    chr = as.numeric(chr),
+    start = as.numeric(start),
+    end = as.numeric(end)
+  )
+
+# Overlap detection between regions and iHS
+regions$ihs_regions <- sapply(1:nrow(regions), function(i) {
+  overlaps <- any((regions$start[i] <= ihs$end) & (regions$end[i] >= ihs$start) & (regions$chr[i] == ihs$chr))
+  ifelse(overlaps, "1", "0")
+})
+
+# Count observed overlaps
+obs_overlaps <- sum(regions$ihs_regions == "1")
+cat("Observed number of overlaps:", obs_overlaps, "\n")
+```
+
+
+```{r}
+# Permutation Analysis
+set.seed(123) # For reproducibility
+PermutationTable <- numeric(5000)
+
+# Function to create random GWAS regions
+create_random_regions <- function(sampled_snps, widths){
+  sampled_snps %>%
+    mutate(
+      start = BP - widths,
+      end = BP
+    ) %>%
+    select(chr = CHR, start, end)
+}
+
+# Main permutation loop
+widths <- regions$end - regions$start
+for (j in 1:5000) {
+  
+  sampled_snps <- df_combined %>% 
+    sample_n(nrow(regions)) %>% 
+    mutate(CHR = as.numeric(CHR), BP = as.numeric(BP)) %>%
+    filter(!is.na(CHR), !is.na(BP))
+  
+  GWAS_regions <- create_random_regions(sampled_snps, widths)
+  
+  # Checking overlaps with iHS regions
+  GWAS_regions$ihs_regions <- sapply(1:nrow(GWAS_regions), function(i) {
+    overlaps <- any((GWAS_regions$start[i] <= ihs$end) & (GWAS_regions$end[i] >= ihs$start) & (GWAS_regions$chr[i] == ihs$chr))
+    ifelse(overlaps, 1, 0)
+  })
+  
+  # Count overlaps in each permutation
+  PermutationTable[j] <- sum(GWAS_regions$ihs_regions)
+  
+  if(j %% 500 == 0) cat("Permutation", j, "completed.\n")
+}
+
+PermutationTable <- data.frame(overlaps = PermutationTable)
+
+# Calculate empirical p-value
+p_value <- mean(PermutationTable$overlaps >= obs_overlaps)
+cat("Empirical p-value:", p_value, "\n")
+```
+
+
+```{r}
+# Visualizing permutation distribution
+quantile_95 <- quantile(PermutationTable$overlaps, 0.95)
+
+ggplot(PermutationTable, aes(x = overlaps)) +
+  geom_histogram(binwidth=1, color="black", fill="grey80") +
+  geom_vline(xintercept=obs_overlaps, color="red", linewidth=1.2, linetype="dashed") +
+  geom_vline(xintercept=quantile_95, color="blue", linewidth=1.2, linetype="dotted") +
+  theme_bw() +
+  labs(
+    title = "Permutation Analysis: Overlap with iHS Regions",
+    subtitle = paste("Observed overlaps:", obs_overlaps, "| Empirical p-value:", round(p_value, 4)),
+    x = "Number of overlapping regions",
+    y = "Frequency"
+  ) +
+  theme(plot.title = element_text(hjust=0.5, size=14, face="bold"),
+        plot.subtitle = element_text(hjust=0.5, size=12),
+        axis.text = element_text(size=12),
+        axis.title = element_text(size=13))
+  
+ggsave("Permutation_Overlap_iHS.png", width=10, height=7, dpi=300)
+
+```
+
+```{r}
+################ Evaluating biological plausibility
+```
+
+```{r}
+##### Step 1: Read significant SNPs (suggestive level, P <= 1e-5)
+sig <- df_combined %>% 
+  filter(P <= 1e-5) %>%
+  select(CHR, BP, P, SNP)
+
+cat("Number of suggestive significant SNPs:", nrow(sig), "\n")
+
+##### Step 2: Read genes dataset (assumes your biomaRt genes file is in working directory)
+genes <- read.table("biomaRtprotcoding_genes_GRCh37.txt", sep = '\t', header = TRUE)
+
+# Check initial genes dataset
+head(genes, 2)
+
+# Rename first column clearly to "Chr"
+colnames(genes)[1] <- "Chr"
+
+##### Step 3: Expand gene regions by ±10kb to include regulatory elements
+genes <- genes %>%
+  mutate(
+    start_10000 = as.numeric(start) - 10000,
+    end_10000 = as.numeric(end) + 10000,
+    Chr = as.numeric(Chr)
+  )
+
+head(genes, 2)
+
+# Ensure numeric data types for SNP data
+sig <- sig %>%
+  mutate(
+    Chr = as.numeric(CHR),
+    Pos = as.numeric(BP)
+  )
+
+##### Step 4: Determine genes overlapping with suggestively significant SNPs
+genes$SNPs <- sapply(1:nrow(genes), function(i) {
+  overlaps <- any(sig$Pos >= genes$start_10000[i] & 
+                  sig$Pos <= genes$end_10000[i] & 
+                  sig$Chr == genes$Chr[i])
+  ifelse(overlaps, "1", "0")
+})
+
+cat("Number of genes overlapping with suggestive SNPs:", sum(genes$SNPs == "1"), "\n")
+
+# Subset genes with at least one overlapping SNP
+sig.genes <- genes %>% filter(SNPs == "1")
+
+# Extract gene IDs and names
+sig.genesID <- sig.genes %>% select(gene_id)
+sig.genesNAME <- sig.genes %>% select(gene_name)
+
+# Ensure these columns are character type
+sig.genesID$gene_id <- as.character(sig.genesID$gene_id)
+sig.genesNAME$gene_name <- as.character(sig.genesNAME$gene_name)
+
+##### Step 5: Write output files with identified gene IDs and names
+write.table(sig.genesID, "GWAS_Suggestive_Genes_ID.txt", sep = '\t', row.names = FALSE, quote = FALSE)
+write.table(sig.genesNAME, "GWAS_Suggestive_Genes_NAME.txt", sep = '\t', row.names = FALSE, quote = FALSE)
+
+cat("Gene lists successfully exported.\n")
+
+# In order to view some of the things your genes are associated with, open the "genes_ID" file you just made.
+# It has the ENSEMBL IDs for each of the genes you found that ovelap the significantly associated SNPs.
+
+# Go to https://davidbioinformatics.nih.gov/summary.jsp
+# On the panel on the right, copy-paste the gene IDs from your file into the "Gene List" section under Step 1
+# Under Step 2, choose ENSEMBL_GENE_ID from the dropdown menu
+# For Step 3, choose "gene list," then Submit
+
+# You can then click "Functional Annotation Table" to see which genes are associated with what.
+# Does anything catch your eye that you think could be related to your trait of interest?
+# You can also look up individual genes by copy-pasting the gene ID into the PAN-GO Human Functionome's searchbar at the top of the page here:
+# https://functionome.geneontology.org
+```
+
