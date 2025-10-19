@@ -290,50 +290,125 @@ run codeml (robust loop)
 
 ```bash
 # run codeml per gene
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${OUT:?Set OUT to your output directory (e.g., export OUT=/path/to/output)}"
+
+mkdir -p "$OUT/logs" "$OUT/tree" "$OUT/codeml"
+
+# Make the for-loop skip when there are no matches
 shopt -s nullglob
+
+# A small helper for messages
+log() { printf '%s\n' "$*" >&2; }
+
 for CODON in "$OUT"/codeml/*.codon.phy; do
   G=$(basename "$CODON" .codon.phy)
-  TREE="$OUT/tree/${G}.nwk"
-  FG_TREE="$OUT/tree/${G}.fg.nwk"
-  OUTFILE="$OUT/codeml/${G}.codeml.out"
+
+  TREE_RAW="$OUT/tree/${G}.nwk"
+  TREE_FG="$OUT/tree/${G}.fg.nwk"
   CTL="$OUT/codeml/${G}.ctl"
-  LOG="$OUT/logs/codeml_${G}.log"
+  OUTFILE="$OUT/codeml/${G}.codeml.out"
+  LOGF="$OUT/logs/codeml_${G}.log"
 
-  # inputs must exist
-  [ -s "$CODON" ] || { echo "[WARN] missing codon for $G"; continue; }
-  [ -s "$TREE" ]  || { echo "[WARN] missing tree for $G";  continue; }
+  # 0) inputs exist?
+  if [[ ! -s "$CODON" ]]; then
+    log "[WARN] $G: missing codon file $CODON"
+    continue
+  fi
+  if [[ ! -s "$TREE_RAW" ]]; then
+    log "[WARN] $G: missing tree $TREE_RAW"
+    continue
+  fi
 
-  # mark human as foreground
-  sed 's/human/human#1/' "$TREE" > "$FG_TREE"
+  # 1) minimal sanity checks that don't depend on label placement
+  NSEQ=$(awk 'NR==1{print $1}' "$CODON")
+  if [[ "$NSEQ" != "3" ]]; then
+    log "[SKIP] $G: PHYLIP header reports $NSEQ sequences (expected 3)"
+    sed -n '1,6p' "$CODON" | sed 's/^/   CODON: /' >&2
+    echo "[SKIP] $G: PHYLIP header $NSEQ (expected 3)" >> "$OUT/logs/bad_phylip_header.log"
+    continue
+  fi
 
-  # write ctl
+  if ! grep -q 'human' "$TREE_RAW"; then
+    log "[SKIP] $G: 'human' not found in tree"
+    log "   tree=$(cat "$TREE_RAW")"
+    echo "[SKIP] $G: human not in tree" >> "$OUT/logs/tree_name_mismatch.log"
+    continue
+  fi
+
+  # 2) mark human as foreground (avoid duplicating #1)
+  if grep -q 'human#1' "$TREE_RAW"; then
+    cp "$TREE_RAW" "$TREE_FG"
+  else
+    sed 's/human/human#1/' "$TREE_RAW" > "$TREE_FG"
+  fi
+
+  # 3) write ctl using RELATIVE paths (we cd into codeml/)
+  # IMPORTANT: The heredoc is CLOSED exactly by EOF on its own line. Do not add anything after EOF.
   cat > "$CTL" <<EOF
-seqfile = $CODON
-treefile = $FG_TREE
-outfile  = $OUTFILE
+seqfile = $(basename "$CODON")
+treefile = ../tree/$(basename "$TREE_FG")
+outfile  = $(basename "$OUTFILE")
+
 noisy    = 9
 verbose  = 1
 runmode  = 0
-seqtype  = 1
-CodonFreq= 2
+
+seqtype  = 1       * 1:codons
+CodonFreq= 2       * F3x4
 clock    = 0
-model    = 2
+model    = 2       * branch model (allows different omega on FG)
 NSsites  = 0
 icode    = 0
+
 fix_kappa= 0
 kappa    = 2
+
 fix_omega= 0
 omega    = 0.2
+
 cleandata= 1
 getSE    = 0
+Small_Diff = .5e-6
 EOF
 
-  ( cd "$OUT/codeml" && codeml "$(basename "$CTL")" ) > "$LOG" 2>&1 || {
-    echo "[ERR] codeml failed for $G (see $LOG)"
-    continue
-  }
+  # 4) quick sanity check the ctl
+  if ! grep -q '^outfile' "$CTL"; then
+    log "[ERR] $G: ctl malformed (missing outfile)"; head -n 30 "$CTL" >&2; continue
+  fi
+  if ! grep -q '^model[[:space:]]*=' "$CTL"; then
+    log "[ERR] $G: ctl malformed (missing model)"; head -n 30 "$CTL" >&2; continue
+  fi
 
-  echo "[OK] $G"
+  # 5) run codeml from within the codeml dir so relative paths resolve
+  (
+    cd "$OUT/codeml"
+    # Remove any stale output so we know if codeml produced a fresh file
+    rm -f "$(basename "$OUTFILE")"
+    # Run codeml
+    if ! codeml "$(basename "$CTL")" > "$LOGF" 2>&1; then
+      log "[ERR] $G: codeml exited non-zero (see $LOGF)"
+      continue
+    fi
+  )
+
+  # 6) basic result validation
+  if [[ ! -s "$OUTFILE" ]]; then
+    log "[ERR] $G: codeml produced no outfile (see $LOGF)"
+    continue
+  fi
+
+  # Common failure mode: 0 usable sites with cleandata=1
+  if grep -qi '0 usable sites' "$LOGF"; then
+    log "[WARN] $G: 0 usable sites after cleandata — alignment likely too gappy (see $LOGF)"
+  else
+    log "[OK]   $G: finished (outfile $(basename "$OUTFILE"))"
+  fi
+
 done
+
+# restore default globbing behavior for the shell/session
 shopt -u nullglob
 ```
